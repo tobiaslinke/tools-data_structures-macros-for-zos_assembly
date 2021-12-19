@@ -1,0 +1,51 @@
+           MACRO
+*----------------------------------------------------------------------
+* RETURNS LENGTH OF A STRING. THE STRING MUST BE TERMINATED BY A NULL
+* BYTE X'00' OR THE END BYTE IS PASSED AS ARGUMENT 'END='
+*
+* RETURN:  SET CONDITION CODES:
+*          CC=0 LENGTH FOUND
+*          CC=2 LENGTH COULD NOT BE DETERMINED
+*          R0:  CONTAINS LENGTH OF STRING
+*----------------------------------------------------------------------
+&LABEL     LENGTH   &STR=,&END=0,&STRLEN=
+           AIF      ('&STR' NE '').START
+           MNOTE    8,'NO STRING SPECIFIED'
+           AGO      .ENDMAC
+.START     ANOP
+           AIF      ('&STR'(1,1) EQ '(').REG_STR
+           AIF      ('&STR'(1,1) EQ '@').ADR_STR
+           LA       1,&STR
+           AGO      .CONT1
+.ADR_STR   ANOP
+           L        1,&STR                   R1:   @STRING
+           AGO      .CONT1
+.REG_STR   ANOP
+           AIF      ('&STR(1)' EQ '(R1)').CONT1
+           AIF      ('&STR(1)' EQ '(1)').CONT1
+           LR       1,&STR(1)                R1:   @STRING
+.CONT1     ANOP
+           IILF     0,&END                   R0:   END TERMINATOR
+           LR       14,1                     R15:  SAVE @STRING
+           AIF      ('&STRLEN' NE '').WITHLEN
+L1_&SYSNDX SRST     0,1                            SEARCH FOR END
+           JC       1,L1_&SYSNDX             CC=3  256 BYTES SEARCHED
+           JC       2,E1_&SYSNDX             CC=2  NOT FOUND
+           SR       0,14                     R0:   LENGTH STRING
+           TML      1,0                            CC=0
+E1_&SYSNDX DS       0H
+           AGO      .ENDMAC
+.WITHLEN   ANOP
+           AIF      ('&STRLEN'(1,1) EQ '(').REG_STRL
+           IILF     15,&STRLEN               R15:  MAX LENGTH STRING
+           AGO      .STRL1
+.REG_STRL  ANOP
+           LR       15,&STRLEN(1)            R15:  MAX LENGTH STRING
+.STRL1     ALR      15,1                     R16:  @END STRING
+L2_&SYSNDX SRST     15,1                           SEARCH FOR END
+           JC       1,L2_&SYSNDX             CC=3  256 BYTES SEARCHED
+           SR       15,14                    R15:  LENGTH STRING
+           LR       0,15                     R0:   RETURN LENGTH STRING
+           TML      1,0                            CC=0
+.ENDMAC    ANOP
+           MEND
