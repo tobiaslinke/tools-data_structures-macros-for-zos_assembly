@@ -1,0 +1,94 @@
+           MACRO
+*----------------------------------------------------------------------
+* Search for the Count of a specific Character or Byte within a
+* String
+*
+* RETURN:  Sets Condition Codes:
+*               0 --> OK and R0 contains Count of Character in String
+*               2 --> Character not found
+*          R0:  contains Count of Character if CC=0
+*----------------------------------------------------------------------
+&LABEL     COUNT &STR=,                pointer to the String           +
+               &CHAR=,                 Byte to search for              +
+               &STRLEN=                (optional) pointer end String
+*----------------------------------------------------------------------
+           AIF   ('&STR' NE '').OK1
+           MNOTE 8,'NO STRING SPECIFIED'
+           AGO   .ENDMAC
+.OK1       ANOP
+           AIF   ('&CHAR' NE '').OK2
+           MNOTE 8,'NO CHARACTER SPECIFIED'
+           AGO   .ENDMAC
+.OK2       ANOP
+           AIF   ('&STRLEN' NE '').WITH_LEN
+*----------------------------------------------------------------------
+*          length of STRING not known
+*----------------------------------------------------------------------
+           AIF   ('&STR'(1,1) EQ '(').REG_STR
+           L     1,&STR                      R1:   @STRING
+           AGO   .CONT1
+.REG_STR   ANOP
+           AIF   ('&STR(1)' EQ '(R1)').CONT1
+           AIF   ('&STR(1)' EQ '(1)').CONT1
+           LR    1,&STR(1)                   R1:   @STRING
+.CONT1     ANOP
+           LR    15,1                        R15:  SAVE @STRING
+           IILF  0,X'00'
+L1_&SYSNDX DS    0H
+           SRST  0,1                               SEARCH FOR END
+           JC    1,L1_&SYSNDX                CC=3  256 BYTES SEARCHED
+           JC    2,E1_&SYSNDX                CC=2  NOT FOUND
+           SR    0,15                        R0:   LENGTH STRING
+           SR    14,14                       R14:  ZERO THE COUNTER
+           AR    0,15                        R0:   @END STRING
+           SLLG  14,0,32                     R14H  SAVE @END STRING
+           IILF  0,&CHAR                     R0:   CHAR TO COUNT
+S1_&SYSNDX DS    0H
+           SRLG  1,14,32                     R1    @END STRING
+           SRST  1,15                              SEARCH FOR CHAR
+           JC    1,S1_&SYSNDX                CC=3  256 BYTES SEARCHED
+           JC    2,E1_&SYSNDX                CC=2  CHAR NOT FOUND, END
+           LA    15,1(,1)                    R15:  NEXT BYTE AFTER CHAR
+           AHI   14,1                        R14:  INCREMENT COUNTER
+           J     S1_&SYSNDX                        GO FIND NEXT CHAR
+E1_&SYSNDX DS    0H
+           LR    0,14                        R0:   COUNT CHAR IN STRING
+           TML   15,0                        CC = 0
+           AGO   .ENDMAC
+*----------------------------------------------------------------------
+*          length of STRING is known
+*----------------------------------------------------------------------
+.WITH_LEN  ANOP
+           AIF   ('&STR'(1,1) EQ '(').REG_STR2
+           L     1,&STR                      R1:   @STRING
+           AGO   .CONT2
+.REG_STR2  ANOP
+           AIF   ('&STR(1)' EQ 'R1').CONT2
+           AIF   ('&STR(1)' EQ '1').CONT2
+           LR    1,&STR(1)                   R1:   @STRING
+.CONT2     ANOP
+           AIF   ('&STRLEN'(1,1) EQ '(').REG_LEN2
+           L     15,&STRLEN                  R15:  LENGTH STRING
+           AGO   .CONT3
+.REG_LEN2  ANOP
+           AIF   ('&STRLEN(1)' EQ 'R1').CONT3
+           AIF   ('&STRLEN(1)' EQ '1').CONT3
+           LR    15,&STRLEN(1)               R15:  LENGTH STRING
+.CONT3     ANOP
+           SLR   14,14                       R14:  ZERO THE COUNTER
+           ALR   15,1                        R15:  @END STRING
+           IILF  0,&CHAR                     R0:   CHAR TO COUNT
+           ST    15,16(,13)                        SAVE @END STRING
+S1_&SYSNDX DS    0H
+           L     15,16(,13)                  R15   @END STRING
+           SRST  15,1
+           JC    1,S1_&SYSNDX                CC=3  256 BYTES SEARCHED
+           JC    2,E1_&SYSNDX                CC=2  CHAR NOT FOUND, END
+           LA    1,1(,15)                    R1:   NEXT BYTE AFTER CHAR
+           AHI   14,1                        R14:  INCREMENT COUNTER
+           J     S1_&SYSNDX                        GO FIND NEXT CHAR
+E1_&SYSNDX DS    0H
+           LR    0,14                        R0:   COUNT CHAR IN STRING
+           TML   15,0                        CC = 0
+.ENDMAC    ANOP
+           MEND
