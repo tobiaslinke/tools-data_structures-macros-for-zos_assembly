@@ -1,0 +1,19 @@
+           MACRO
+*----------------------------------------------------------------------
+* SWAP     SWAP REGISTER
+*
+*          SWAP LOW HALF WITH HIGH HALF OF REGISTER 1
+*----------------------------------------------------------------------
+&LABEL     SWAP
+&ARGNUM    SETA     N'&SYSLIST
+           AIF      ('&ARGNUM' EQ '1').ONE_REG
+           MNOTE    8,'SPECIFY ONLY ONE REGISTER TO SWAP'
+           AGO      .ENDMAC
+*---------------
+* SWAP R1
+*---------------
+.ONE_REG   ANOP
+&REG1      SETC     '&SYSLIST(1)'
+&LABEL     RISBG    &REG1,&REG1,32,X'00'+31,32     SWAP HIGH WITH LOW
+.ENDMAC    ANOP
+           MEND
