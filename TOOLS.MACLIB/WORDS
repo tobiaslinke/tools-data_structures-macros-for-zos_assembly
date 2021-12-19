@@ -1,0 +1,127 @@
+           MACRO
+*----------------------------------------------------------------------
+* Returns the Number of Words in a String that are separated by one
+* or more Blanks. If STRLEN is not used then the string must be 
+* terminated by a x'00' byte 
+*
+* RETURN:  Sets Condition Codes:
+*               0 --> OK and R0 contains Count of Words in String
+*               2 --> Word not found
+*          R0:  contains Count of Words if CC=0
+*----------------------------------------------------------------------
+&LABEL     WORDS &STR=,                pointer to the String           +
+               &STRLEN=                (optional) pointer end String
+*----------------------------------------------------------------------
+           AIF   ('&STR' NE '').OK1
+           MNOTE 8,'NO STRING SPECIFIED'
+           AGO   .ENDMAC
+.OK1       ANOP
+           AIF   ('&STRLEN' NE '').WITH_LEN
+*----------------------------------------------------------------------
+*          length of STRING not known
+*----------------------------------------------------------------------
+           AIF   ('&STR'(1,1) EQ '(').REG_STR
+           L     1,&STR                      R1:   @STRING
+           AGO   .CONT1
+.REG_STR   ANOP
+           AIF   ('&STR(1)' EQ '(R1)').CONT1
+           AIF   ('&STR(1)' EQ '(1)').CONT1
+           LR    1,&STR(1)                   R1:   @STRING
+.CONT1     ANOP
+           LR    15,1                        R15:  SAVE @STRING
+           IILF  0,X'00'
+L1_&SYSNDX DS    0H
+           SRST  0,1                               SEARCH FOR END
+           JC    1,L1_&SYSNDX                CC=3  256 BYTES SEARCHED
+           JC    2,E1_&SYSNDX                CC=2  NOT FOUND
+           SLLG  14,0,32                     R14H  SAVE @END STRING
+           LR    1,0                         R1:   @END STRING
+           SR    14,14                       R14:  INIT WORD COUNTER 0
+           LLC   0,0(,15)                    R0:   FIRST CHAR OF STRING
+           CHI   0,X'40'                           IS A BLANK?
+           JNE   S0_&SYSNDX                        NO, CONTINUE
+           AHI   14,-1                             YES, COUNTER  -1
+S0_&SYSNDX DS    0H
+           LAY   1,-1(,1)                    R1:   @LAST CHAR OF STRING
+           LLC   1,0(,1)
+           IILF  0,X'40'                     R0:   EBCDIC BLANK
+           CHI   1,X'40'                           LAST CHAR A BLANK?
+           JE    S1_&SYSNDX                        YES, CONTINUE
+           IILF  14,1                        R14:  NO, INIT WORD CNT 1
+S1_&SYSNDX DS    0H
+           SRLG  1,14,32                     R1    @END STRING
+           SRST  1,15                              SEARCH FOR CHAR
+           JC    1,S1_&SYSNDX                CC=3  256 BYTES SEARCHED
+           JC    2,E1_&SYSNDX                CC=2  CHAR NOT FOUND, END
+           LA    15,1(,1)                    R15:  NEXT BYTE AFTER CHAR
+           AHI   14,1                        R14:  INCREMENT COUNTER
+           CLI   0(15),X'40'                       IS NEXT ALSO BLANK?
+           JNE   S1_&SYSNDX                        NO, FIND NEXT WORD
+           SRLG  1,14,32                     R1:   @END STRING
+L2_&SYSNDX DS    0H                                YES, FIND NON BLANK
+           LA    15,1(,15)                   R15:  NEXT BYTE
+           CRJE  1,15,E1_&SYSNDX                   IF AT END LEAVE
+           CLI   0(15),X'40'                       IS THIS A BLANK?
+           JE    L2_&SYSNDX                        YES, FIND NON BLANK
+           J     S1_&SYSNDX                        NO, FIND NEXT WORD
+E1_&SYSNDX DS    0H
+           LR    0,14                        R0:   COUNT CHAR IN STRING
+           TML   15,0                        CC = 0
+           AGO   .ENDMAC
+*----------------------------------------------------------------------
+*          length of STRING is known
+*----------------------------------------------------------------------
+.WITH_LEN  ANOP
+           AIF   ('&STR'(1,1) EQ '(').REG_STR2
+           L     1,&STR                      R1:   @STRING
+           AGO   .CONT2
+.REG_STR2  ANOP
+           AIF   ('&STR(1)' EQ 'R1').CONT2
+           AIF   ('&STR(1)' EQ '1').CONT2
+           LR    1,&STR(1)                   R1:   @STRING
+.CONT2     ANOP
+           AIF   ('&STRLEN'(1,1) EQ '(').REG_LEN2
+           L     15,&STRLEN                  R15:  LENGTH STRING
+           AGO   .CONT3
+.REG_LEN2  ANOP
+           AIF   ('&STRLEN(1)' EQ 'R1').CONT3
+           AIF   ('&STRLEN(1)' EQ '1').CONT3
+           LR    15,&STRLEN(1)               R15:  LENGTH STRING
+.CONT3     ANOP
+           LTR   15,15                             LENGTH = 0?
+           JZ    E1_&SYSNDX                        YES, LEAVE
+           AR    15,1                        R15:  @END STRING
+           SLLG  14,15,32                    R14H  SAVE @END STRING
+           SR    14,14                       R14:  INIT WORD COUNTER 0
+           LLC   0,0(,1)                     R0:   FIRST CHAR OF STRING
+           CHI   0,X'40'                           IS A BLANK?
+           JNE   S0_&SYSNDX                        NO, CONTINUE
+           AHI   14,-1                             YES, COUNTER  -1
+S0_&SYSNDX DS    0H
+           LAY   15,-1(,15)                  R15:  @LAST CHAR OF STRING
+           LLC   15,0(,15)                   R15:  LAST CHAR OF STRING
+           IILF  0,X'40'                     R0:   EBCDIC BLANK
+           CHI   15,X'40'                          LAST CHAR A BLANK?
+           JE    S1_&SYSNDX                        YES, CONTINUE
+           IILF  14,1                        R14:  NO, INIT WORD CNT 1
+S1_&SYSNDX DS    0H
+           SRLG  15,14,32                    R15   @END STRING
+           SRST  15,1
+           JC    1,S1_&SYSNDX                CC=3  256 BYTES SEARCHED
+           JC    2,E1_&SYSNDX                CC=2  CHAR NOT FOUND, END
+           LA    1,1(,15)                    R1:   NEXT BYTE AFTER CHAR
+           AHI   14,1                        R14:  INCREMENT COUNTER
+           CLI   0(1),X'40'                        IS NEXT ALSO BLANK?
+           JNE   S1_&SYSNDX                        NO, FIND NEXT WORD
+           SRLG  15,14,32                    R15:  @END STRING
+L2_&SYSNDX DS    0H                                YES, FIND NON BLANK
+           LA    1,1(,1)                     R1    NEXT BYTE
+           CRJE  15,1,E1_&SYSNDX                   IF AT END LEAVE
+           CLI   0(1),X'40'                        IS THIS A BLANK?
+           JE    L2_&SYSNDX                        YES, FIND NON BLANK
+           J     S1_&SYSNDX                        NO, FIND NEXT WORD
+E1_&SYSNDX DS    0H
+           LR    0,14                        R0:   COUNT CHAR IN STRING
+           TML   15,0                        CC = 0
+.ENDMAC    ANOP
+           MEND
