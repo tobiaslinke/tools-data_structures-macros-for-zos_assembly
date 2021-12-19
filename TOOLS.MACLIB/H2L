@@ -1,0 +1,26 @@
+           MACRO
+*----------------------------------------------------------------------
+* H2L      REGISTER HIGH --> LOW
+*----------------------------------------------------------------------
+&LABEL     H2L
+&ARGNUM    SETA     N'&SYSLIST
+           AIF      ('&ARGNUM' EQ '1').ONE_REG
+           AIF      ('&ARGNUM' EQ '2').TWO_REG
+           MNOTE    8,'SPECIFY ONLY ONE REGISTER TO SWAP'
+           AGO      .ENDMAC
+*--------------
+* H2L   R1
+*--------------
+.ONE_REG   ANOP     ,
+&REG1      SETC     '&SYSLIST(1)'
+&LABEL     RISBG    &REG1,&REG1,32,X'00'+0,32      HIGH --> LOW
+           AGO      .ENDMAC
+*--------------
+* H2L   R1,R2
+*--------------
+.TWO_REG   ANOP     ,
+&REG1      SETC     '&SYSLIST(1)'
+&REG2      SETC     '&SYSLIST(2)'
+&LABEL     RISBG    &REG1,&REG2,32,X'00'+0,32      HIGH --> LOW
+.ENDMAC    ANOP
+           MEND
