@@ -1,0 +1,161 @@
+***********************************************************************
+* DESCRIPTION:_______________________________________________________ *
+* ___________________________________________________________________ *
+* RETURNS_A_DATE_AND/OR_TIME_STAMP___________________________________ *
+* ___________________________________________________________________ *
+* ENTRY:__R0: @WORKAREA______________________________________________ *
+* ________R1: @PARMLIST______________________________________________ *
+* ____________PARM1_-->_REQUEST_FLAG_________________________________ *
+* ______________________B'10000000' _-_(EBCDIC)_DATE+TIME____________ *
+* ______________________B'01000000' _-_(BIN)____TIME_HHMMSS__________ *
+* ___________________________________________________________________ *
+* ___________________________________________________________________ *
+* RETURN:_R1 :@TIMESTAMP_____________________________________________ *
+* ________R15:RETURN_CODE____________________________________________ *
+* ___________________________________________________________________ *
+***********************************************************************
+           TITLE    'TAFSTAMP CREATE DATE/TIME STAMP'
+           ENTRY    TAFSTAMP
+TAFSTAMP   RSECT    ,                              READ ONLY CSECT
+TAFSTAMP   AMODE    31
+TAFSTAMP   RMODE    ANY
+***********************************************************************
+* Register
+***********************************************************************
+R0         EQU      0
+R1         EQU      1                                                   
+R2         EQU      2                                                   
+R3         EQU      3                                                   
+R4         EQU      4                                                   
+R5         EQU      5                                                   
+R6         EQU      6                                                   
+R7         EQU      7                                                   
+R8         EQU      8                                                   
+R9         EQU      9                                                   
+R10        EQU      10                             @DATE+TIME STAMP
+R11        EQU      11                             @WORKAREA            
+R12        EQU      12                             @TAFSTAMP            
+R13        EQU      13                             LINKAGE              
+R14        EQU      14                             LINKAGE              
+R15        EQU      15                             LINKAGE              
+***********************************************************************
+* ENTRY
+***********************************************************************
+           SAVE     (14,12)                        SAVE CALLER REGS
+           LR       R12,R15                  R12:  BASE REGISTER
+           USING    TAFSTAMP,R12
+           LR       R4,R1                    R4:   @PARMS
+           LR       R11,R0                   R11:  @WORKAREA
+***********************************************************************
+* CREATE WORKAREA
+***********************************************************************
+           LR       R2,R0
+           IILF     R3,WORKAREAL
+           SR       R1,R1
+           MVCL     R2,R0
+           USING    WORKAREA,R11
+           ST       R13,SAVEAREA+4
+           LA       R15,SAVEAREA
+           ST       R15,8(R13)
+           LR       R13,R15
+***********************************************************************
+* MAIN
+***********************************************************************
+*--------------------------------------------
+*          GET CURRENT TIME AND DATE
+*--------------------------------------------
+           TIME     DEC,                           DECIMAL FORMAT      +
+               DATPACK,                            16B DATE+TIME FIELD +
+               ZONE=LT,                            USE LOCAL TIME      +
+               DATETYPE=DDMMYYYY,                  DATE FORMAT         +
+               LINKAGE=SYSTEM,                                         +
+               MF=(E,TIME01)
+           ST       R15,RC                         SAVE RC
+           CIJNE    R15,0,EXIT01                   IF RC<>0 THEN EXIT
+*--------------------------------------------
+*          DETERMINE REQUESTED FUNCTION
+*--------------------------------------------
+           TM       0(R4),B'10000000'
+           JO       CHAR_T#D
+           TM       0(R4),B'01000000'
+           JO       BIN_T
+           J        ERROR01                        WRONG REQUEST
+*----------------------------------------------------------------------
+*          BINARY TIME (HHMMSS)
+*----------------------------------------------------------------------
+BIN_T      MVI      HOUR+7,X'0C'                   SIGN FOR HOUR
+           LLC      R1,DATPACK               R1:   HOUR IN PACKED
+           STC      R1,HOUR+6                      SET BEFORE SIGN
+           MVO      HOUR+4(4),HOUR+4(3)            SHIFT TO CORECT SIGN
+           MVI      MINUTE+7,X'0C'                 SIGN FOR MINUTE
+           LLC      R1,DATPACK+1             R1:   MINUTE IN PACKED
+           STC      R1,MINUTE+6                    SET BEFORE SIGN
+           MVO      MINUTE+4(4),MINUTE+4(3)        SHIFT TO CORECT SIGN
+           MVI      SECOND+7,X'0C'                 SIGN FOR SECOND
+           LLC      R1,DATPACK+2             R1:   SECOND IN PACKED
+           STC      R1,SECOND+6                    SET BEFORE SIGN
+           MVO      SECOND+4(4),SECOND+4(3)        SHIFT TO CORECT SIGN
+           CVB      R1,HOUR                  R1:   BINARY HOUR
+           CVB      R2,MINUTE                R2:   BINARY MINUTE
+           CVB      R3,SECOND                R3:   BINARY SECOND
+           STC      R1,TIMESTAMP                   SET HH....
+           STC      R2,TIMESTAMP+1                 SET ..MM..
+           STC      R3,TIMESTAMP+2                 SET ....SS
+           J        EXIT01                         FINISHED
+*----------------------------------------------------------------------
+*          EBCDIC TIME+DATE (HH:MM:SS:mmmm DD.MM.YYYY)
+*----------------------------------------------------------------------
+CHAR_T#D   LA       R5,TIMESTAMP             R5:   @TIMESTAMP
+           OI       DATPACK+6,X'0C'                SIGN FOR TIME
+           MVO      DATPACK+7(5),DATPACK+8(4)      SHIFT TO CORECT SIGN
+           NI       DATPACK+11,X'F0'
+           OI       DATPACK+11,X'0C'               SIGN FOR DATE
+           MVC      TIMECHAR,TIMEMASK              EDIT MASK FOR TIME
+           ED       TIMECHAR,DATPACK               EDIT IT
+           MVC      DATECHAR,DATEMASK
+           ED       DATECHAR,DATPACK+7
+           MVC      0(10,R5),DATECHAR+2
+           MVI      10(R5),C' '
+           MVC      11(8,R5),TIMECHAR+1
+           J        EXIT01                         FINISHED
+***********************************************************************
+* RETURN
+***********************************************************************
+EXIT01     DS       0H
+           L        R13,4(R13)               R13:  CALLER SAVEAREA
+           L        R15,RC                   R15:  RETURN CODE
+           L        R14,12(,R13)             R14:  RESTORE RETURN ADDR.
+           LA       R1,TIMESTAMP             R1:   @TIMESTAMP
+           RETURN   (2,12),RC=(15)                 RETURN TO CALLER
+***********************************************************************
+* ERRORS
+***********************************************************************
+ERROR01    DS       0H
+           IILF     R15,1
+           ST       R15,RC
+           J        EXIT01
+***********************************************************************
+* CONSTANTS
+***********************************************************************
+TIMEMASK   DC       XL16'F021207A20207A20204B202020202020'
+DATEMASK   DC       XL12'F02120206120206120202020'
+           LTORG    ,
+***********************************************************************
+* WORKAREA
+***********************************************************************
+WORKAREA   DSECT    ,                              MY WORKAREA
+SAVEAREA   DS       18F                            MY SAVEAREA
+HOUR       DS       D                              HOUR PACKED
+MINUTE     DS       D                              MINUTE PACKED
+SECOND     DS       D                              SECOND PACKED
+RC         DS       F                              RETURN CODE
+TIME01     TIME     LINKAGE=SYSTEM,MF=L            TIME PARM LIST
+DATPACK    DS       PL16                           TIME*DATE PACKED
+TIMECHAR   DS       XL16                           EBCDIC TIME
+DATECHAR   DS       XL12                           EBCDIC DATE
+TIMESTAMP  DS       CL19                           RETURN TIMESTAMP
+WORKAREAL  EQU      *-WORKAREA
+***********************************************************************
+* DSECTS
+***********************************************************************
+           END      TAFSTAMP
