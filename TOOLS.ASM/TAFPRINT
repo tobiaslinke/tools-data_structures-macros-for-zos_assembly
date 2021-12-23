@@ -1,0 +1,215 @@
+***********************************************************************
+* DESCRIPTION:                                                        *
+* ___________________________________________________________________ *
+* ___________________________________________________________________ *
+* ENTRY:_____R1:__@PARMLIST__________________________________________ *
+* ________________1. A  (1B length,message text)_____________________ *
+* ________________2. A  @DCB ________________________________________ *
+* ________________3. F  length var1 _________________________________ *
+* ________________4. A  @var1 _______________________________________ *
+* ________________5. F  length var2 _________________________________ *
+* ________________6. A  @var2 _______________________________________ *
+* ________________7. F  length var3 _________________________________ *
+* ________________8. A  @var3 _______________________________________ *
+* ___________________________________________________________________ *
+* ___________R0:__@WORKAREA__________________________________________ *
+* ___________________________________________________________________ *
+***********************************************************************
+           TITLE    'TAFPRINT PUT MESSAGES TO DCB'
+           ENTRY    TAFPRINT
+TAFPRINT   CSECT    ,                              READ ONLY CSECT
+TAFPRINT   AMODE    31
+TAFPRINT   RMODE    ANY
+***********************************************************************
+* Register
+***********************************************************************
+R0         EQU      0
+R1         EQU      1                                                   
+R2         EQU      2                                                   
+R3         EQU      3                                                   
+R4         EQU      4                              @DCB                 
+R5         EQU      5                                                   
+R6         EQU      6                                                   
+R7         EQU      7                                                   
+R8         EQU      8                                                   
+R9         EQU      9                                                   
+R10        EQU      10                             @MESSAGE
+R11        EQU      11                             @WORKAREA            
+R12        EQU      12                             @TAFPRINT            
+R13        EQU      13                             LINKAGE              
+R14        EQU      14                             LINKAGE              
+R15        EQU      15                             LINKAGE              
+***********************************************************************
+* ENTRY
+***********************************************************************
+           SAVE     (14,12)                        SAVE CALLER REGS
+           LR       R12,R15                  R12:  BASE REGISTER
+           USING    TAFPRINT,R12
+           LR       R5,R1                    R5:   @PARMS
+           LR       R11,R0                   R11:  @WORKAREA
+***********************************************************************
+* CREATE WORKAREA
+***********************************************************************
+           LR       R2,R11
+           IILF     R3,WORKAREAL
+           SR       R1,R1
+           MVCL     R2,R0
+           USING    WORKAREA,R11
+           ST       R13,SAVEAREA+4
+           LA       R15,SAVEAREA
+           ST       R15,8(R13)
+           LR       R13,R15                  R13:  @SAVEAREA
+***********************************************************************
+* MAIN
+***********************************************************************
+           ENQ   (QUEUENAME,RESSOURCE,E,,STEP)
+*----------------------------------------------------------------------
+*          INIT MESSAGE WITH ZEROES
+*----------------------------------------------------------------------
+           MVC      MSGMVC,MVC01
+           MVC      MSGMVC2,MVC02
+           XC       MESSAGE,MESSAGE
+           XC       TEMP,TEMP
+*----------------------------------------------------------------------
+*          SET DATE + TIME
+*----------------------------------------------------------------------
+           XC       DATPACK,DATPACK
+           TIME     DEC,                           DECIMAL FORMAT      +
+               DATPACK,                            16B DATE+TIME FIELD +
+               ZONE=LT,                            USE LOCAL TIME      +
+               LINKAGE=SYSTEM,                                         +
+               DATETYPE=DDMMYYYY,                  DATE FORMAT         +
+               MF=(E,TIME01)
+*
+           OI       DATPACK+6,X'0C'                SIGN FOR TIME
+           MVO      DATPACK+7(5),DATPACK+8(4)
+           MVC      TIMECHAR,TIMEMASK              EDIT MASK FOR TIME
+           ED       TIMECHAR,DATPACK               EDIT IT
+           MVC      TIMESTAMP+1(13),TIMECHAR+1
+           MVI      TIMESTAMP+14,C' '
+*----------------------------------------------------------------------
+*          GET PARAMETER
+*----------------------------------------------------------------------
+           L        R2,0(,R5)                R2:   @LENGTH,MESSAGE TXT
+           LLC      R2,0(,R2)                R2:   MESSAGE TEXT LENGTH
+           L        R3,0(,R5)                R3:   @LENGTH,MESSAGE TXT
+           LA       R3,1(,R3)                R3:   @MESSAGE TEXT
+           L        R4,4(,R5)                R4:   @DCB
+           LA       R5,8(,R5)                R5:   @VAR1 LENGTH
+           LA       R10,MESSAGE              R10:  @MESSAGE
+           LR       R9,R3
+           AHI      R2,-1                    R2:   DECR. LEN FOR MVC
+           EX       R2,MSGMVC                      MOVE TXT TO MESSAGE
+           AHI      R2,1                     R2:   BACK TO ORIG. LEN
+*----------------------------------------------------------------------
+*          COUNT NUMBER VARIABLES IN MSG
+*----------------------------------------------------------------------
+           COUNT    STR=(R3),STRLEN=(R2),CHAR=C'$' HOW MANY $ VARS?
+           JNZ      DOPUT                          NO VARS, PUT MSG
+*----------------------------------------------------------------------
+*          SPLIT MSG AT $ VARIABLES POSITIONS
+*----------------------------------------------------------------------
+           SPLITSTR STR=(R3),STRLEN=(R2),DELIM=C'$',DELIML=1,MF=(E,SPL)
+           LR       R8,R1                    R8:   @ARRAY
+           ST       R8,@ARRAY                      SAVE ARRAY POINTER
+           USING    #ARRAY,R8                      ADDRESS ARRAY
+           MVC      ARRAYLEN,#ARRAYSIZ             SAVE ARRAY SIZE
+           L        R7,#ARRAYELM             R7:   NUMBER ARRAY ELEMENT
+           LA       R8,#ARRAYL(,R8)          R0:   POINTER 1. ELEMENT
+           USING    #ARRAYEL,R8                    ADDRESS ELEMENT
+*----------------------------------------------------------------------
+*          PROCESS ALL SUBSTRINGS
+*----------------------------------------------------------------------
+           LA       R10,TEMP                 R10:  @TEMP
+LOOP       DS       0H
+           L        R6,#ARRAYELML            R6:   LENGTH SUBSTRING
+           L        R9,#ARRAYELM@            R9:   @SUBSTRING
+           CLC      =CL2'$1',0(R9)                 IS THIS VAR1?
+           JE       GETVAR                         YES, DEAL WITH IT
+           CLC      =CL2'$2',0(R9)                 IS THIS VAR2?
+           JE       GETVAR                         YES, DEAL WITH IT
+           CLC      =CL2'$3',0(R9)                 IS THIS VAR3?
+           JE       GETVAR                         YES, DEAL WITH IT
+           AHI      R6,-1                    R6:   DECR. LEN FOR MVC
+           EX       R6,MSGMVC                      MOVE SUBSTR TO TEMP
+           AHI      R6,1                     R6:   OLD LENGTH BACK
+           LA       R10,0(R6,R10)            R10:  MOVE POINTER TEMP
+           LA       R8,#ARRAYELL(,R8)        R8:   NEXT #ARRAY ELEMENT
+           JCT      R7,LOOP                        DO FOR ALL SUBSTR
+           J        ENDLOOP
+           DROP     R8
+*----------------------------------------------------------------------
+*          PUT $ VARIABLES IN MESSAGE
+*----------------------------------------------------------------------
+GETVAR     DS       0H
+           L        R2,0(,R5)                R2:   LENGTH OF VAR
+           L        R3,4(,R5)                R3:   @VAR
+           AHI      R2,-1                    R2:   DECR. LEN FOR MVC
+           EX       R2,MSGMVC2                     MOVE SUBSTR TO TEMP
+           AHI      R2,1                     R2:   OLD LENGTH BACK
+           LA       R10,0(R2,R10)            R10:  MOVE POINTER TEMP
+           LA       R9,2(,R9)                      AFTER $x IN SUBSTR
+           AHI      R6,-3                    R6:   DECR. LEN FOR MVC
+           CIJL     R6,0,ENDSTR                    DO WE HAVE A REST
+           EX       R6,MSGMVC                      MOVE SUBSTR TO TEMP
+           AHI      R6,1                     R6:   OLD LENGTH BACK
+           LA       R10,0(R6,R10)            R10:  MOVE POINTER TEMP
+ENDSTR     DS       0H
+           LA       R8,#ARRAYELL(,R8)        R8:   NEXT #ARRAY ELEMENT
+           LA       R5,8(,R5)                R5:   NEXT VAR
+           JCT      R7,LOOP                        DO FOR ALL SUBSTR
+ENDLOOP    DS       0H
+           L        R8,ARRAYLEN              R8:   #ARRAY SIZE
+           STORAGE  RELEASE,LENGTH=(R8),ADDR=@ARRAY RELEASE #ARRAY STOR
+           MVC      MESSAGE,TEMP
+*----------------------------------------------------------------------
+*          PRINT MESSAGE
+*----------------------------------------------------------------------
+DOPUT      DS       0H
+           PUT      (R4),MSG
+***********************************************************************
+* RETURN
+***********************************************************************
+EXIT01     DS       0H
+           DEQ      (QUEUENAME,RESSOURCE,,STEP)
+           L        R13,4(R13)               R13:  CALLER SAVEAREA      
+           L        R15,RC
+           RETURN   (14,12),RC=(15)                RETURN TO CALLER     
+***********************************************************************
+* CONSTANTS
+***********************************************************************
+@SPLITSTR  DC       V(SPLITSTR)
+TIMEMASK   DC       XL16'F021207A20207A20204B202020202020'
+DATEMASK   DC       XL12'F02120206120206120202020'
+MVC01      MVC      0(0,R10),0(R9)
+MVC02      MVC      0(0,R10),0(R3)
+QUEUENAME  DC    CL8'AUTOMAT0'
+RESSOURCE  DC    CL255'AUTOSCHEDULER'
+           LTORG    ,
+***********************************************************************
+* WORKAREA
+***********************************************************************
+WORKAREA   DSECT    ,
+SAVEAREA   DS       18F
+@ARRAY     DS       A
+RC         DS       F
+RSN        DS       F
+ARRAYLEN   DS       F
+MSGMVC     MVC      0(0,R10),0(R9)
+MSGMVC2    MVC      0(0,R10),0(R3)
+TIME01     TIME     LINKAGE=SYSTEM,MF=L
+           DS       0X
+DATPACK    DS       PL16                  TIME AND DATE FROM TIME MACRO
+TIMECHAR   DS       XL16                   EDITED TIME
+DATECHAR   DS       XL12                   EDITED DATE
+MSG        DS       0D
+TIMESTAMP  DS       CL15
+MESSAGE    DS       CL255
+TEMP       DS       CL255
+SPL        SPLITSTR MF=L
+WORKAREAL  EQU      *-WORKAREA
+***********************************************************************
+* DSECTS
+***********************************************************************
+           DATATYPE ,
+           END
