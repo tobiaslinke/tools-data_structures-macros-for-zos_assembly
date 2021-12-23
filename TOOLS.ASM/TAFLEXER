@@ -1,0 +1,399 @@
+***********************************************************************
+* DESCRIPTION                                                         *
+* ___________________________________________________________________ *
+* ENTRY:    R1:  @STRING_____________________________________________ *
+* __________R0:__LENGTH OF STRING____________________________________ *
+* ___________________________________________________________________ *
+* RETURN:_  R1:  @ARRAY OF TOKENS____________________________________ *
+* ________  R0:  @LEXER STRING_______________________________________ *
+* __________R15: RC__________________________________________________ *
+* ___________________________________________________________________ *
+***********************************************************************
+           TITLE    'TAFLEXER LEXICAL ANALYZE A STRING'
+TAFLEXER   RSECT    ,                                    REANTRENT
+TAFLEXER   AMODE    31
+TAFLEXER   RMODE    ANY
+***********************************************************************
+* REGISTER
+***********************************************************************
+R0         EQU      0
+R1         EQU      1                                                   
+R2         EQU      2                                                   
+R3         EQU      3                                                   
+R4         EQU      4                                                   
+R5         EQU      5                                                   
+R6         EQU      6                                                   
+R7         EQU      7                                                   
+R8         EQU      8                                                   
+R9         EQU      9                                                   
+R10        EQU      10
+R11        EQU      11                                                  
+R12        EQU      12                                                  
+R13        EQU      13                                                  
+R14        EQU      14                                                  
+R15        EQU      15                                                  
+***********************************************************************
+* ENTRY
+***********************************************************************
+           SAVE     (14,12)                        SAVE CALLER REGS
+           LR       R12,R15                  R12:  BASE REGISTER
+           USING    TAFLEXER,R12
+           LR       R5,R0                    R4:   @STRING LENGTH
+           LR       R4,R1                    R5:   @STRING
+           J        WORK1
+CONST      LOCTR    ,
+CODE       LOCTR    ,
+CODE       LOCTR    ,
+***********************************************************************
+* CREATE WORKAREA
+***********************************************************************
+WORK1      STORAGE  OBTAIN,LENGTH=WORKAREAL,LOC=31,BNDRY=DBLWD
+           LR       R11,R1
+           LR       R2,R11
+           LR       R6,R0
+           IILF     R3,WORKAREAL
+           SR       R1,R1
+           MVCL     R2,R0
+           USING    WORKAREA,R11
+           ST       R13,SAVEAREA+4
+           LA       R15,SAVEAREA
+           ST       R15,8(R13)
+           LR       R13,R15
+           ST       R6,WORKSIZE
+***********************************************************************
+* MAIN
+***********************************************************************
+*----------------------------------------------------------------------
+*          ALLOC STORAGE FOR ARRAY
+*----------------------------------------------------------------------
+           IILF     R1,#ARRAYL+(255*#ARRAYELL)     DEFAULT 255 ELEMENTS 
+           LR       R2,R1
+           ALR      R1,R5                          + LENGTH STRING
+           STORAGE  OBTAIN,LOC=31,LENGTH=(R1)                           
+           LA       R2,0(R2,R1)              R2:   @LEXER STRING
+           LR       R3,R2
+           ST       R2,@LEXERSTR                   SAVE PTR TO LEXER S.
+           LR       R9,R1                    R9:   @ARRAY               
+           USING    #ARRAY,R9                      ADDRESS ARRAY HEADER 
+           ST       R0,#ARRAYSIZ                   SET SIZE IN ARRAY    
+           LA       R10,#ARRAYL(,R9)         R10:  @ARRAY INDEX 0       
+           USING    #ARRAYEL,R10                   ADDRESS ARRAY INDEX  
+           IILF     R8,0                     R8:   ARRAY ELEMENTS
+           LAY      R4,-1(,R4)                     MOVE PTR BACK 1B
+           AHI      R5,1                           INCR. LENGTH
+*----------------------------------------------------------------------
+*          FIND ALL DELIMITERS
+*----------------------------------------------------------------------
+           LARL     R1,TRANSTBL              R1:   @TRANSTBL
+CONTINUE   LA       R4,1(,R4)                      MOVE PTR FORWARD
+           LR       R7,R4                    R7:   @LAST TOKEN
+           ST       R4,#ARRAYELM@                  SET PTR IN ARRAY
+           LAY      R4,-1(,R4)                     MOVE PTR FORWARD
+CONTINUE0  LA       R4,1(,R4)                      MOVE PTR FORWARD
+           AHI      R5,-1                          DECR. LENGTH
+           CIJE     R5,0,ATEND2                    IF AT END THEN LEAVE
+           TRTE     R4,R15,B'0000'                 FIND DELIMITER
+           JC       1,CONTINUE                     256 BYTES PROCESSED
+           JC       8,ATEND
+           B        SELECT(R15)
+SELECT     DS       0H
+           J        EXIT01                         00 CC0
+           J        DBL_QUOTE                      04
+           J        SNGL_QUOTE                     08
+           J        BRACKT_OPN                     0C
+           J        BRACKT_CLO                     10
+           J        COMMA                          14
+           J        BLANK                          18
+*--------------------------------------------------
+*          WE FOUND A DOUBLE QUOTE
+*--------------------------------------------------
+DBL_QUOTE  DS       0H
+           TM       FLAG,GOT_VAR                   IS THIS A VARIABLE?
+           JO       VAR_QUOTE1                     YES, THEN SKIP IT
+           LR       R3,R4                    R3:   @FOUND SYMBOL
+           SLR      R3,R7                    R3:   LENGTH SUBSTR
+           CIJE     R3,0,ONLY_QUOT1                IF 0 THEN ONLY SYM
+           ST       R3,#ARRAYELML                  SET LENGTH IN ARRAY
+           LA       R10,#ARRAYELL(,R10)      R10:  NEXT ARRAY ELEMENT
+           AHI      R8,1
+           MVI      0(R2),C'K'                     PRE. WAS KEYWORD
+           MVI      1(R2),C'"'                     THIS IS A COMMA
+           LA       R2,2(,R2)                R2:   @NEXT LEXER TOKEN
+           J        CONTINUE                       CONTINUE SEARCH
+ONLY_QUOT1 MVI      0(R2),C'"'                     THIS IS A DBL QUOTE
+           LA       R2,1(,R2)                R2:   NEXT LEXER BYTE
+           J        CONTINUE                       CONTINUE SEARCH
+VAR_QUOTE1 LLC      R14,-1(R4)               R14:  PREVIOUS BYTE
+           CFI      R14,C'('                       IS IT A OPN BR.?
+           JNE      VAR_QUOTE2                     NO, TEST NEXT
+           TM       FLAG,VARQUOTES                 INSIDE VAR ?
+           JZ       VAR_QUOTE0
+           ASI      BRACKETS,1
+           J        CONTINUE0
+VAR_QUOTE0 OI       FLAG,VARQUOTES                 YES, SET QUOTE
+           MVI      0(R2),C'"'                     THIS IS A DBL QUOTE
+           LA       R2,1(,R2)                R2:   NEXT LEXER BYTE
+           ASI      @VARSTART,1                    MOVE PTR 1 BYTE
+           J        CONTINUE                       CONTINUE SEARCH
+VAR_QUOTE2 LLC      R14,1(R4)                R14:  NEXT BYTE
+           CFI      R14,C')'                       IS IT CLO BR. ?
+           JNE      CONTINUE                       NO, CONTINUE SEARCH
+           L        R15,BRACKETS                   INSIDE VAR ?
+           CIJH     R15,1,CONTINUE0
+           MVI      0(R2),C'"'                     THIS IS A DBL QUOTE
+           LA       R2,1(,R2)                R2:   NEXT LEXER BYTE
+           LR       R3,R4                    R3:   @CUR POS IN STRING
+           L        R14,@VARSTART            R14:  @BEGIN VARIABLE
+           SLR      R3,R14                   R3:   LENGTH VARIABLE
+           CIJE     R3,0,CONTINUE                  IF 0 THEN SKIP
+           LAY      R2,-1(,R2)               R2:   NEXT LEXER BYTE
+           MVI      0(R2),C'V'                     PREV IS A VARIABLE
+           MVI      1(R2),C'"'                     THIS IS A DBL QUOTE
+           LA       R2,2(,R2)                R2:   NEXT LEXER BYTE
+           AHI      R3,-1                          - 1 FOR QUOTE
+           ST       R3,#ARRAYELML                  SET LENGTH IN ARRAY
+           LA       R14,1(,R14)
+           ST       R14,#ARRAYELM@                 SET PTR IN ARRAY
+           LA       R10,#ARRAYELL(,R10)      R10:  NEXT ARRAY ELEMENT
+           AHI      R8,1                           INCR. ELEMENT COUNT
+           J        CONTINUE                       CONTINUE SEARCH
+*--------------------------------------------------
+*          WE FOUND A SINGLE QUOTE
+*--------------------------------------------------
+SNGL_QUOTE DS       0H
+           TM       FLAG,GOT_VAR                   IS THIS A VARIABLE?
+           JO       VAR_QUOTE                      YES, THEN SKIP IT
+           LR       R3,R4                    R3:   @FOUND SYMBOL
+           SLR      R3,R7                    R3:   LENGTH SUBSTR
+           CIJE     R3,0,ONLY_QUOTE                IF 0 THEN ONLY SYM
+           ST       R3,#ARRAYELML                  SET LENGTH IN ARRAY
+           LA       R10,#ARRAYELL(,R10)      R10:  NEXT ARRAY ELEMENT
+           AHI      R8,1                           INCR. ELEMENT COUNT
+           MVI      0(R2),C'K'                     PRE. WAS KEYWORD
+           MVI      1(R2),X'7D'                    THIS IS A SNGL QUOTE
+           LA       R2,2(,R2)                R2:   @NEXT LEXER TOKEN
+           J        CONTINUE                       CONTINUE SEARCH
+ONLY_QUOTE MVI      0(R2),X'7D'                    THIS IS A SNGL QUOTE
+           LA       R2,1(,R2)                R2:   NEXT LEXER BYTE
+           J        CONTINUE                       CONTINUE SEARCH
+VAR_QUOTE  LLC      R14,-1(R4)               R14:  PREVIOUS BYTE
+           CFI      R14,C'('                       IS IT A BRACKET?
+           JNE      VAR_QUOTE3                     NO, TEST NEXT
+           TM       FLAG,VARQUOTES                 INSIDE VAR ?
+           JZ       VAR_QUOTE6
+           ASI      BRACKETS,1
+           J        CONTINUE0
+VAR_QUOTE6 OI       FLAG,VARQUOTES                 YES, SET QUOTE
+           MVI      0(R2),X'7D'                    THIS IS A SNGL QUOTE
+           LA       R2,1(,R2)                R2:   NEXT LEXER BYTE
+           ASI      @VARSTART,1                    MOVE PTR 1 BYTE
+           J        CONTINUE                       CONTINUE SEARCH
+VAR_QUOTE3 LLC      R14,1(R4)                R14:  NEXT BYTE
+           CFI      R14,C')'                       IS IT CLO BR. ?
+           JNE      CONTINUE                       NO, CONTINUE SEARCH
+           L        R15,BRACKETS                   INSIDE VAR ?
+           CIJH     R15,1,CONTINUE0
+           MVI      0(R2),X'7D'                    THIS IS A SNGL QUOTE
+           LA       R2,1(,R2)                R2:   NEXT LEXER BYTE
+           LR       R3,R4                          @CUR POS IN STRING
+           L        R14,@VARSTART                  @BEGIN VARIABLE
+           SLR      R3,R14                         LENGTH VARIABLE
+           CIJE     R3,0,CONTINUE                  IF 0 THEN SKIP
+           LAY      R2,-1(,R2)               R2:   NEXT LEXER BYTE
+           MVI      0(R2),C'V'                     PREV IS A VARIABLE
+           MVI      1(R2),X'7D'                    THIS IS A SNGL QUOTE
+           LA       R2,2(,R2)                R2:   NEXT LEXER BYTE
+           AHI      R3,-1                          - 1 FOR QUOTE
+           ST       R3,#ARRAYELML                  SET LENGTH IN ARRAY
+           LA       R14,1(,R14)
+           ST       R14,#ARRAYELM@                 SET PTR IN ARRAY
+           LA       R10,#ARRAYELL(,R10)      R10:  NEXT ARRAY ELEMENT
+           AHI      R8,1                           INCR. ELEMENT COUNT
+           J        CONTINUE                       CONTINUE SEARCH
+*--------------------------------------------------
+*          WE FOUND A COMMA
+*--------------------------------------------------
+COMMA      DS       0H
+           TM       FLAG,GOT_VAR                   IS THIS A VARIABLE?
+           JO       CONTINUE0                      YES, THEN SKIP IT
+           LR       R3,R4                    R3:   @FOUND SYMBOL
+           SLR      R3,R7                    R3:   LENGTH SUBSTR
+           CIJE     R3,0,ONLY_COMMA                IF 0 THEN ONLY SYM
+           ST       R3,#ARRAYELML                  SET LENGTH IN ARRAY
+           LA       R10,#ARRAYELL(,R10)      R10:  NEXT ARRAY ELEMENT
+           AHI      R8,1
+           MVI      0(R2),C'K'                     PRE. WAS KEYWORD
+           MVI      1(R2),C','                     THIS IS A COMMA
+           LA       R2,2(,R2)                R2:   @NEXT LEXER TOKEN
+           J        CONTINUE                       CONTINUE SEARCH
+ONLY_COMMA MVI      0(R2),C','                     THIS IS A COMMA
+           LA       R2,1(,R2)                R2:   NEXT LEXER BYTE
+           J        CONTINUE                       CONTINUE SEARCH
+*--------------------------------------------------
+*          WE FOUND AN OPENING BRACKET
+*--------------------------------------------------
+BRACKT_OPN DS       0H
+           TM       FLAG,GOT_VAR                   IS THIS A VARIABLE?
+           JO       CONTINUE0                      YES, THEN SKIP IT
+           OI       FLAG,GOT_VAR                   BEGIN OF VARIABLE
+           ASI      BRACKETS,1                     INCR. BRACKETS
+           LR       R3,R4                    R3:   @FOUND SYMBOL
+           SLR      R3,R7                    R3:   LENGTH SUBSTR
+           ST       R4,@VARSTART                   SAVE PTR BEG. VAR.
+           CIJE     R3,0,ONLY_BOPN                 IF 0 THEN ONLY SYM
+           ST       R3,#ARRAYELML                  SET LENGTH IN ARRAY
+           LA       R10,#ARRAYELL(,R10)      R10:  NEXT ARRAY ELEMENT
+           AHI      R8,1                           INCR. ELEMENT COUNT
+           MVI      0(R2),C'K'                     PRE. WAS KEYWORD
+           MVI      1(R2),C'('                     THIS IS A BRACKET
+           LA       R2,2(,R2)                R2:   @NEXT LEXER TOKEN
+           J        CONTINUE                       CONTINUE SEARCH
+ONLY_BOPN  MVI      0(R2),C')'                     THIS IS A BRACKET
+           LA       R2,1(,R2)                R2:   NEXT LEXER BYTE
+           J        CONTINUE                       CONTINUE SEARCH
+*--------------------------------------------------
+*          WE FOUND A CLOSING BRACKET
+*--------------------------------------------------
+BRACKT_CLO DS       0H
+           TM       FLAG,GOT_VAR                   END OF A VAR ?
+           JZ       NO_VAR                         NO OPN BRACKET
+           TM       FLAG,VARQUOTES                 GOT QUOTED VAR?
+           JO       BRACK_QUOT                     NO, CLOSE VAR
+           ASI      BRACKETS,-1                    DECR. OPEN BRACK.
+           L        R15,BRACKETS             R15:  NUMBER BRACKETS
+           CIJH     R15,0,CONTINUE0                IF MORE BRACK,SKIP
+CLO_VAR    L        R7,@VARSTART             R3:   @BEGIN_VARIABLE
+           LR       R3,R4
+           SLR      R3,R7                    R3:   LENGTH VARIABLE
+           CIJE     R3,0,ONLY_BCLO                 IF 0 THEN NO VAR
+           AHI      R3,-1                          DECR. LEN FOR )
+           ST       R3,#ARRAYELML                  SET LENGTH IN ARRAY
+           LA       R10,#ARRAYELL(,R10)      R10:  NEXT ARRAY ELEMENT
+           AHI      R8,1                           INCR. ELEMENT COUNT
+           MVI      0(R2),C'V'                     PRE. WAS VARIABLE
+           MVI      1(R2),C')'                     THIS IS A BRACKET
+           LA       R2,2(,R2)                R2:   @NEXT LEXER TOKEN
+           XC       FLAG,FLAG                      END OF VARIABLE
+           J        CONTINUE                       CONTINUE SEARCH
+ONLY_BCLO  ASI      BRACKETS,-1                    DECR. OPEN BRACK.
+           L        R15,BRACKETS             R15:  NUMBER BRACKETS
+           CIJH     R15,0,CONTINUE0                IF MORE BRACK,SKIP
+           MVI      0(R2),C')'                     THIS IS A BRACKET
+           LA       R2,1(,R2)                R2:   NEXT LEXER BYTE
+           XC       FLAG,FLAG                      END OF VARIABLE
+           J        CONTINUE                       CONTINUE SEARCH
+NO_VAR     LR       R3,R4                    R3:   @SYMBOL IN STRING
+           SLR      R3,R7                    R3:   LENGTH SYMBOL
+           CIJE     R3,0,ONLY_BCLO                 IF 0 THEN NO VAR
+           MVI      0(R2),C'K'                     PRE. WAS KEYWORD
+           MVI      1(R2),C')'                     THIS IS A BRACKET
+           LA       R2,2(,R2)                R2:   @NEXT LEXER TOKEN
+           ST       R3,#ARRAYELML                  SET LENGTH IN ARRAY
+           LA       R10,#ARRAYELL(,R10)      R10:  NEXT ARRAY ELEMENT
+           AHI      R8,1                           INCR. ELEMENT COUNT
+           XC       FLAG,FLAG                      END OF VARIABLE
+           J        CONTINUE                       CONTINUE SEARCH
+BRACK_QUOT LLC      R14,-1(R4)               R14:  PREV BYTE
+           CFI      R14,C'"'                       IS IT A DBL QUOTE?
+           JE       ONLY_BCLO                      YES, SET ONLY SYM
+           CFI      R14,X'7D'                      IS IT A SNGL QUOTE?
+           JE       ONLY_BCLO                      YES, SET ONLY SYM
+           L        R15,BRACKETS             R15:  NUMBER BRACKETS
+           CIJH     R15,0,CONTINUE0                IF MORE BRACK,SKIP
+           J        CLO_VAR                        NO, SET VARIABLE
+*--------------------------------------------------
+*          WE FOUND A BLANK
+*--------------------------------------------------
+BLANK      DS       0H
+           TM       FLAG,GOT_VAR                   IS THIS A VARIABLE?
+           JO       BLANK2                         YES, IGNORE IT
+           LR       R3,R4                    R3:   @SYMBOL IN STRING
+           SLR      R3,R7                    R3:   LENGTH SYMBOL
+           CIJE     R3,0,ONLY_BLANK                IF 0 THEN ONLY SYM
+           ST       R3,#ARRAYELML                  SET LENGTH IN ARRAY
+           LA       R10,#ARRAYELL(,R10)      R10:  NEXT ARRAY ELEMENT
+           AHI      R8,1                           INCR. ELEMENT COUNT
+           MVI      0(R2),C'K'                     INDICATE KEYWORD
+           MVI      1(R2),C' '                     THIS IS A BLANK
+           LA       R2,2(,R2)                R2:   NEXT LEXER BYTE
+BLANK2     LLC      R14,1(R4)                      LOOKAHEAD 1 BYTE
+           CFI      R14,C' '                       IS IT A BLANK TOO ?
+           JE       NEXT_BLANK                     YES, FIND NON BLANK
+           J        CONTINUE                       NO, CONTINUE SEARCH
+NEXT_BLANK LLC      R14,1(,R4)               R14:  GET BYTE OF STRING
+           CFI      R14,C' '                       IS IT A BLANK?
+           JNE      CONTINUE                       NO CONTINUE SEARCH
+           LA       R4,1(,R4)                R4:   NEXT STRING BYTE
+           AHI      R5,-1                    R5:   DECR. LENGTH BY ONE
+           CIJE     R5,0,ATEND2                    IF AT END THEN LEAVE
+           J        NEXT_BLANK                     YES, TEST NEXT BYTE
+ONLY_BLANK MVI      0(R2),C' '                     THIS IS A BLANK
+           LA       R2,1(,R2)                R2:   NEXT LEXER BYTE
+           J        BLANK2
+*--------------------------------------------------
+*          WE ARE AT THE END OF THE STRING
+*--------------------------------------------------
+ATEND      DS       0H
+           LR       R3,R4
+           SLR      R3,R7
+           CIJE     R3,0,ATEND2
+           ST       R3,#ARRAYELML                  SET LENGTH IN ARRAY
+           AHI      R8,1
+           MVI      0(R2),C'K'                     INDICATE BLANK
+ATEND2     DS       0H
+           ST       R8,#ARRAYELM                   SET NUMBER ELEMENTS
+***********************************************************************
+* RETURN
+***********************************************************************
+EXIT01     DS       0H
+           L        R13,4(R13)               R13:  CALLER SAVEAREA
+           LR       R3,R9                    R3:   @ARRAY
+           L        R4,@LEXERSTR             R4:   @LEXER STRING
+           L        R6,WORKSIZE
+           STORAGE  RELEASE,ADDR=(R11),LENGTH=(R6)
+           LR       R1,R3                    R1:   @ARRAY
+           LR       R0,R4                    R0:   @LEXER STRING
+           SR       R15,R15                  R15:  RC=0
+           L        R14,12(,R13)             R14:  RETURN ADDR.
+           RETURN   (2,12),RC=(15)                 RETURN TO CALLER
+***********************************************************************
+* CONSTANTS "'
+***********************************************************************
+CONST      LOCTR    ,
+TRANSTBL   DS       0D
+  DC X'00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00' X'00' - X'0F'
+  DC X'00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00' X'10' ' X'1F'
+  DC X'00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00' X'20' - X'2F'
+  DC X'00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00' X'30' - X'3F'
+  DC X'18,00,00,00,00,00,00,00,00,00,00,00,00,0C,00,00' X'40' - X'4F'
+  DC X'00,00,00,00,00,00,00,00,00,00,00,00,00,10,00,00' X'50' - X'5F'
+  DC X'00,00,00,00,00,00,00,00,00,00,00,14,00,00,00,00' X'60' - X'6F'
+  DC X'00,00,00,00,00,00,00,00,00,00,00,00,00,08,00,04' X'70' - X'7F'
+  DC X'00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00' X'80' - X'8F'
+  DC X'00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00' X'90' - X'9F'
+  DC X'00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00' X'A0' - X'AF'
+  DC X'00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00' X'B0' - X'BF'
+  DC X'00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00' X'C0' - X'CF'
+  DC X'00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00' X'D0' - X'DF'
+  DC X'00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00' X'E0' - X'EF'
+  DC X'00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00' X'F0' - X'FF'
+           LTORG
+CODE       LOCTR    ,
+***********************************************************************
+* WORKAREA
+***********************************************************************
+WORKAREA   DSECT    ,
+SAVEAREA   DS       18F
+WORKSIZE   DS       F
+@LEXERSTR  DS       A
+@VARSTART  DS       A
+BRACKETS   DS       F
+FLAG       DS       XL1
+GOT_VAR    EQU      B'10000000'
+VARQUOTES  EQU      B'01000000'
+WORKAREAL  EQU      *-WORKAREA
+***********************************************************************
+* DSECTS
+***********************************************************************
+           DATATYPE ,
+           END      TAFLEXER
