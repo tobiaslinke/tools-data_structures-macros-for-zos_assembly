@@ -1,0 +1,84 @@
+***********************************************************************
+* DESCRIPTION                                                         *
+* ___________________________________________________________________ *
+* ENTRY:    R1:@PARMLIST_____________________________________________ *
+* _____________PARM1 @NUMBER_EBCDIC__________________________________ *
+* _____________PARM2_LENGTH NUMBER___________________________________ *
+* __________R0:@WORKAREA_____________________________________________ *
+* ___________________________________________________________________ *
+* RETURN:   R1:  NUMBER BINARY_______________________________________ *
+* ___________________________________________________________________ *
+***********************************************************************
+           TITLE    'TAFCONVB CONVERT EBCDIC NUMBER TO BINARY'
+           ENTRY    TAFCONVB
+TAFCONVB   CSECT    ,
+TAFCONVB   AMODE    31
+TAFCONVB   RMODE    ANY
+***********************************************************************
+* REGISTER
+***********************************************************************
+R0         EQU      0
+R1         EQU      1                                                   
+R2         EQU      2                                                   
+R3         EQU      3                                                   
+R4         EQU      4                                                   
+R5         EQU      5                                                   
+R6         EQU      6                                                   
+R7         EQU      7                                                   
+R8         EQU      8                                                   
+R9         EQU      9                                                   
+R10        EQU      10
+R11        EQU      11                             @WORKAREA            
+R12        EQU      12                             @TAFCONVB            
+R13        EQU      13                             LINKAGE              
+R14        EQU      14                             LINKAGE              
+R15        EQU      15                             LINKAGE              
+***********************************************************************
+* ENTRY
+***********************************************************************
+           SAVE     (14,12)                        SAVE CALLER REGS
+           LR       R12,R15                  R12:  BASE REGISTER
+           USING    TAFCONVB,R12                   ADDRESS BASE
+           LR       R8,R1                    R8:   @PARMS
+           L        R4,0(,R8)                R4:   @NUMBER
+           L        R5,4(,R8)                R5:   LENGTH NUMBER
+           LR       R11,R0                   R11:  @WORKAREA
+***********************************************************************
+* CREATE WORKAREA
+***********************************************************************
+           USING    WORKAREA,R11                   ADDRESS WORKAREA
+           XC       0(WORKAREAL,R11),0(R11)        RESET WORKAREA
+           ST       R13,SAVEAREA+4
+           LA       R15,SAVEAREA
+           ST       R15,8(R13)
+           LR       R13,R15
+***********************************************************************
+* MAIN
+***********************************************************************
+           LA       R6,NUMBER                R6:   @MY NUMBER
+           IILF     R7,L'NUMBER
+           SLR      R7,R5
+           ALR      R6,R7
+           LR       R7,R5                    R7.   LENGTH NUMBER
+           MVCL     R6,R4                          MOVE NUMBER TO WORKA
+           PACK     NUMPACKED(8),NUMBER(10)        PACK THE NUMBER
+           SR       R3,R3                    R3:   ZERO
+           CVB      R3,NUMPACKED             R3:   BINARY NUMBER
+***********************************************************************
+* RETURN
+***********************************************************************
+EXIT01     DS       0H
+           L        R13,4(R13)               R13:  CALLER SAVEAREA
+           L        R14,12(,R13)             R14:  RESTORE RETURN ADDR.
+           LR       R1,R3                    R1:   BINARY NUMBER
+           SR       R15,R15                        RC=0
+           RETURN   (2,12),RC=(15)                 RETURN TO CALLER
+***********************************************************************
+* WORKAREA
+***********************************************************************
+WORKAREA   DSECT    ,                              MY WORKAREA
+SAVEAREA   DS       18F                            SAVEAREA
+NUMPACKED  DS       PL8                            PACKED NUMBER
+NUMBER     DS       CL10                           EBCDIC NUMBER
+WORKAREAL  EQU      *-WORKAREA                     LENGTH WORKAREA
+           END      TAFCONVB
