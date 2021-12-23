@@ -1,0 +1,260 @@
+***********************************************************************
+* Description                                                         *
+* ___________________________________________________________________ *
+* ___________________________________________________________________ *
+* ENTRY:____R1:___@PARMLIST__________________________________________ *
+* ________________1. A  (1B length,message text)_____________________ *
+* ________________2. F  length var1 _________________________________ *
+* ________________3. A  @var1 _______________________________________ *
+* ________________4. F  length var2 _________________________________ *
+* ________________5. A  @var2 _______________________________________ *
+* ________________6. F  length var3 _________________________________ *
+* ________________7. A  @var3 _______________________________________ *
+* ________________8._F__FLAG_________________________________________ *
+* ______________________B'10000000'_Immediate Action_________________ *
+* ______________________B'01000000'_Command Response_________________ *
+* ___________________________________________________________________ *
+* ________________9._A  @Console ID__________________________________ *
+* ________________10.A  @Command&Response Token______________________ *
+* ___________________________________________________________________ *
+* __________R0:___@WORKAREA__________________________________________ *
+* ___________________________________________________________________ *
+* ___________________________________________________________________ *
+* ___________________________________________________________________ *
+***********************************************************************
+           TITLE    'TAFWTO DYNAMIC WTO MESSAGES'
+           ENTRY    TAFWTO
+TAFWTO     RSECT    ,                              READ ONLY CSECT
+TAFWTO     AMODE    31
+TAFWTO     RMODE    ANY
+***********************************************************************
+* Register
+***********************************************************************
+R0         EQU      0
+R1         EQU      1                                                   
+R2         EQU      2                                                   
+R3         EQU      3                                                   
+R4         EQU      4                                                   
+R5         EQU      5                                                   
+R6         EQU      6                                                   
+R7         EQU      7                                                   
+R8         EQU      8                                                   
+R9         EQU      9                                                   
+R10        EQU      10                             @MESSAGE
+R11        EQU      11                             @WORKAREA            
+R12        EQU      12                             @TAFWTO              
+R13        EQU      13                             LINKAGE              
+R14        EQU      14                             LINKAGE              
+R15        EQU      15                             LINKAGE              
+***********************************************************************
+* ENTRY
+***********************************************************************
+           SAVE     (14,12)
+           LR       R12,R15                  R12:  BASE REGISTER
+           USING    TAFWTO,R12
+           LR       R5,R1                    R5:   @PARMS
+           LR       R11,R0                   R11:  @WORKAREA
+***********************************************************************
+* CREATE WORKAREA
+***********************************************************************
+           LR       R2,R11
+           IILF     R3,WORKAREAL
+           SR       R1,R1
+           MVCL     R2,R0
+           USING    WORKAREA,R11
+           ST       R13,SAVEAREA+4
+           LA       R15,SAVEAREA
+           ST       R15,8(R13)
+           LR       R13,R15                  R13:  @SAVEAREA
+***********************************************************************
+* MAIN
+***********************************************************************
+*----------------------------------------------------------------------
+*          INIT MESSAGE WITH ZEROES
+*----------------------------------------------------------------------
+           XC       MESSAGE,MESSAGE
+           XC       TEMP,TEMP
+*----------------------------------------------------------------------
+*          GET PARAMETER
+*----------------------------------------------------------------------
+           ST       R5,@PARMS
+           L        R2,0(,R5)                R2:   @LENGTH,MESSAGE TXT
+           LLC      R2,0(,R2)                R2:   MESSAGE TEXT LENGTH
+           L        R3,0(,R5)                R3:   @LENGTH,MESSAGE TXT
+           LA       R3,1(,R3)                R3:   @MESSAGE TEXT
+           LLC      R0,28(,R5)               R0:   FLAG
+           STC      R0,FLAG                        SAVE FLAG
+           LA       R5,4(,R5)                R5:   @VAR1 LENGTH
+           LA       R0,MESSAGE               R0:   @MESSAGE
+           LR       R1,R2                    R1:   LENGTH MESSAGE
+           LR       R8,R3                    R8:   @PASSED MSG
+           LR       R9,R2                    R9:   MESSAGE LENGTH
+           MVCL     R0,R8                          MOVE INTO WORKAREA
+*----------------------------------------------------------------------
+*          COUNT NUMBER VARIABLES IN MSG
+*----------------------------------------------------------------------
+           COUNT    STR=(R3),STRLEN=(R2),CHAR=C'$' HOW MANY $ VARS?
+           JNZ      DOWTO                          NO VARS, WTO MSG
+*----------------------------------------------------------------------
+*          SPLIT MSG AT $ VARIABLES POSITIONS
+*----------------------------------------------------------------------
+           SPLITSTR STR=(R3),STRLEN=(R2),DELIM=C'$',DELIML=1,MF=(E,SPL)
+           LR       R10,R1                   R10:  @ARRAY
+           ST       R10,@ARRAY                     SAVE ARRAY POINTER
+           USING    #ARRAY,R10                     ADDRESS ARRAY
+           L        R4,#ARRAYELM             R4:   NUMBER ARRAY ELEMENT
+           LA       R10,#ARRAYL(,R10)        R10:  ELEMENT 0
+           USING    #ARRAYEL,R10                   ADDRESS ELEMENT
+*----------------------------------------------------------------------
+*          PROCESS ALL SUBSTRINGS
+*----------------------------------------------------------------------
+           LA       R8,TEMP                  R8:   @TEMP
+LOOP       DS       0H
+           L        R7,#ARRAYELML            R7:   LENGTH SUBSTRING
+           L        R6,#ARRAYELM@            R6:   @SUBSTRING
+           CLC      =CL2'$1',0(R6)                 IS THIS VAR1?
+           JE       GETVAR                         YES, DEAL WITH IT
+           CLC      =CL2'$2',0(R6)                 IS THIS VAR2?
+           JE       GETVAR                         YES, DEAL WITH IT
+           CLC      =CL2'$3',0(R6)                 IS THIS VAR3?
+           JE       GETVAR                         YES, DEAL WITH IT
+           LR       R9,R7                    R9:   LENGTH SUBSTRING
+           MVCL     R8,R6                          MOVE INTO WORKAREA
+           LA       R10,#ARRAYELL(,R10)      R10:  NEXT #ARRAY ELEMENT
+           JCT      R4,LOOP                        DO FOR ALL SUBSTR
+           J        ENDLOOP
+           DROP     R10                            DROP ARRAY
+*----------------------------------------------------------------------
+*          PUT $ VARIABLES IN MESSAGE
+*----------------------------------------------------------------------
+GETVAR     DS       0H
+           L        R3,0(,R5)                R3:   LENGTH OF VAR
+           L        R2,4(,R5)                R2:   @VAR
+           LR       R9,R3                    R9:   LENGTH OF VAR
+           MVCL     R8,R2                          MOVE INTO WORKAREA
+           LA       R6,2(,R6)                R6    AFTER $x IN SUBSTR
+           AHI      R7,-2                    R7:   DECR. LEN
+           CIJL     R7,0,ENDSTR                    IF NO REST, END
+           LR       R9,R7                          MOVE REST TO MSG
+           MVCL     R8,R6
+ENDSTR     LA       R10,#ARRAYELL(,R10)      R8:   NEXT #ARRAY ELEMENT
+           LA       R5,8(,R5)                R5:   NEXT VAR
+           JCT      R4,LOOP                        DO FOR ALL SUBSTR
+ENDLOOP    L        R8,@ARRAY                R8:   #ARRAY SIZE
+           L        R7,0(,R8)
+           STORAGE  RELEASE,LENGTH=(R7),ADDR=(R8),COND=YES
+           MVC      MESSAGE,TEMP
+*----------------------------------------------------------------------
+*          PRINT MESSAGE
+*----------------------------------------------------------------------
+DOWTO      DS       0H
+           LENGTH   STR=MESSAGE                    GET ACTUAL LENGTH
+           STH      R0,WTOPARM                     STORE IN WTOPARM
+           TM       FLAG,B'10000000'               ACTION WTO ?
+           JO       ACTION                         YES, DO IT
+           TM       FLAG,B'01000000'               CMD RESPONSE WTO?
+           JO       RESPONSE                       YES, DO IT
+           MVC      WTOD,WTO1                      NO, DEFAULT WTO
+           SR       R0,R0                          RESET R0
+           LA       R2,WTOPARM
+           ST       R2,WTOD+4
+           WTO      MF=(E,WTOD)                    DO THE WTO
+           ST       R15,RC                         SAVE THE RETURN CODE
+           L        R5,@PARMS                      RETURN THE
+           ST       R1,0(,R5)                      WTOID
+***********************************************************************
+* RETURN
+***********************************************************************
+EXIT01     DS       0H
+           L        R13,4(R13)               R13:  CALLER SAVEAREA      
+           L        R14,12(,R13)             R14:  RESTORE RETURN ADDR.
+           L        R15,RC                   R15:  RESTORE RC
+           LR       R1,R5                    R1:   RETURN PARMLIST
+           RETURN   (2,12),RC=(15)                 RETURN TO CALLER     
+***********************************************************************
+* SUBROUTINES
+***********************************************************************
+*--------------------------------------------------
+*          ACTION WTO
+*--------------------------------------------------
+ACTION     TM       FLAG,B'01000000'
+           JO       RESP_ACTIO                     RESPONSE & ACTION
+           MVC      WTOD,WTO2
+           SR       R0,R0                          RESET R0
+           LA       R2,WTOPARM
+           ST       R2,WTOD+4
+           WTO      MF=(E,WTOD)
+           ST       R15,RC                         SAVE THE RETURN CODE
+           L        R5,@PARMS                      RETURN THE
+           ST       R1,0(,R5)                      WTOID
+           J        EXIT01
+*--------------------------------------------------
+*          COMMAND RESPONSE WTO
+*--------------------------------------------------
+RESPONSE   MVC      WTOD,WTO3
+           L        R5,@PARMS                R5:   @PARMLIST
+           L        R1,32(,R5)               R1:   @CONSOLE ID
+           MVC      CONSID(4),0(R1)                GET CONSOLE ID
+           L        R1,36(,R5)               R1:   @C&R TOKEN
+           MVC      RTOKEN(8),0(R1)                GET RTOKEN
+           SR       R0,R0                          RESET R0
+           LA       R2,WTOPARM
+           ST       R2,WTOD+4
+           WTO      MF=(E,WTOD),CONSID=CONSID,CART=RTOKEN
+           ST       R15,RC                         SAVE THE RETURN CODE
+           L        R5,@PARMS                      RETURN THE
+           ST       R1,0(,R5)                      WTOID
+           J        EXIT01
+*--------------------------------------------------
+*          COMMAND RESPONSE WITH ACTION WTO
+*--------------------------------------------------
+RESP_ACTIO MVC      WTOD,WTO4
+           L        R5,@PARMS                R5:   @PARMLIST
+           L        R1,32(,R5)               R1:   @CONSOLE ID
+           MVC      CONSID(4),0(R1)                GET CONSOLE ID
+           L        R1,36(,R5)               R1:   @C&R TOKEN
+           MVC      RTOKEN(8),0(R1)                GET RTOKEN
+           SR       R0,R0                          RESET R0
+           LA       R2,WTOPARM
+           ST       R2,WTOD+4
+           WTO      MF=(E,WTOD),CONSID=CONSID,CART=RTOKEN
+           ST       R15,RC                         SAVE THE RETURN CODE
+           L        R5,@PARMS                      RETURN THE
+           ST       R1,0(,R5)                      WTOID
+           J        EXIT01
+***********************************************************************
+* CONSTANTS
+***********************************************************************
+@SPLITSTR  DC       V(SPLITSTR)
+WTO1       WTO      TEXT=,MF=L
+WTO1l      EQU      *-WTO1
+WTO2       WTO      TEXT=,ROUTCDE=(1,10),DESC=(2),MF=L
+WTO2l      EQU      *-WTO2
+WTO3       WTO      TEXT=,DESC=(5,7),CONSID=,CART=,MF=L
+WTO3l      EQU      *-WTO3
+WTO4       WTO      TEXT=,ROUTCDE=(1,10),DESC=(5),CONSID=,CART=,MF=L
+WTO4l      EQU      *-WTO4
+           LTORG    ,
+***********************************************************************
+* WORKAREA
+***********************************************************************
+WORKAREA   DSECT    ,                              MY WORKAREA
+SAVEAREA   DS       18F                            MY SAVEAREA
+RTOKEN     DS       CL8                            C&R TOKEN
+@ARRAY     DS       A                              PTR ARRAY OF TOKENS
+@PARMS     DS       A                              OTR TO PARMLIST
+RC         DS       F                              RETURN CODE
+FLAG       DS       F                              REQUEST FLAG
+WTOD       DS       CL(WTO1L)                      WTO PARMLIST
+CONSID     DS       F                              CONSOLE ID
+WTOPARM    DS       0H
+           DS       H
+MESSAGE    DS       CL126                          MESSAGE TEXT
+TEMP       DS       CL(L'MESSAGE)                  TEMP MESSAGE TEXT
+SPL        SPLITSTR MF=L                           SPLITSTR PARMLIST
+WORKAREAL  EQU      *-WORKAREA                     SIZE OF MY WORKAREA
+***********************************************************************
+* DSECTS
+***********************************************************************
+           DATATYPE ,
+           END
